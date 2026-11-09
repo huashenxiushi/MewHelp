@@ -17,10 +17,14 @@ from app.diagnostics import install_safe_diagnostics
 install_safe_diagnostics()
 
 
+def model_not_configured_error() -> AppError:
+    return AppError("model_not_configured", "模型尚未配置，请联系服务维护者。", 503)
+
+
 def create_model(settings: Settings) -> ChatOpenAI:
     """Create a request-owned model; its async HTTP client must be closed."""
     if not settings.model_configured:
-        raise AppError("model_not_configured", "模型尚未配置，请联系服务维护者。", 503)
+        raise model_not_configured_error()
     return ChatOpenAI(
         base_url=settings.openai_base_url,
         model=settings.openai_model,
@@ -66,7 +70,11 @@ async def model_response_scope(model: ChatOpenAI) -> AsyncIterator[None]:
 
 async def get_model(
     settings: Annotated[Settings, Depends(get_settings)],
-) -> AsyncIterator[ChatOpenAI]:
+) -> AsyncIterator[ChatOpenAI | None]:
+    if not settings.model_configured:
+        # Let FastAPI validate the request body before reporting missing configuration.
+        yield None
+        return
     model = create_model(settings)
     try:
         yield model

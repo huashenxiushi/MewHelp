@@ -14,6 +14,22 @@ def test_health_without_env():
     assert response.json() == {"status": "ok", "model_configured": False}
 
 
+@pytest.mark.parametrize(
+    "path,payload",
+    [
+        ("/api/chat/stream", {"message": ""}),
+        ("/api/after-sales/extract", {"description": " "}),
+    ],
+    ids=["chat-stream", "after-sales-extract"],
+)
+def test_invalid_request_is_422_without_model_configuration(path, payload):
+    from app.main import app
+
+    with TestClient(app) as client:
+        response = client.post(path, json=payload)
+    assert response.status_code == 422
+
+
 def test_settings_load_dotenv(tmp_path):
     from app.config import Settings
 

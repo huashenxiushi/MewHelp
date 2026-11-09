@@ -15,7 +15,7 @@ from langchain_openai import ChatOpenAI
 from app.config import Settings, get_settings
 from app.context import build_chat_messages
 from app.errors import AppError
-from app.model import get_model
+from app.model import get_model, model_not_configured_error
 from app.schemas import AfterSalesRequest, AfterSalesResult, ChatRequest
 from app.service import extract_after_sales, stream_chat
 
@@ -53,8 +53,10 @@ def health(settings: Annotated[Settings, Depends(get_settings)]) -> dict[str, st
 async def get_chat_events(
     request: ChatRequest,
     settings: Annotated[Settings, Depends(get_settings)],
-    model: Annotated[ChatOpenAI, Depends(get_model)],
+    model: Annotated[ChatOpenAI | None, Depends(get_model)],
 ) -> AsyncIterator[AsyncIterator[str]]:
+    if model is None:
+        raise model_not_configured_error()
     prepared = build_chat_messages(request, settings)
 
     async def events() -> AsyncIterator[str]:
@@ -87,8 +89,10 @@ async def after_sales_extract(
     connection: Request,
     request: AfterSalesRequest,
     settings: Annotated[Settings, Depends(get_settings)],
-    model: Annotated[ChatOpenAI, Depends(get_model)],
+    model: Annotated[ChatOpenAI | None, Depends(get_model)],
 ) -> AfterSalesResult:
+    if model is None:
+        raise model_not_configured_error()
     result: AfterSalesResult | None = None
     error: Exception | None = None
     async with create_task_group() as group:
