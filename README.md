@@ -2,11 +2,14 @@
 
 Python 3.11+、FastAPI、langchain-core / langchain-openai。应用以 `ChatOpenAI` 直连 OpenAI Chat Completions 兼容上游；不使用数据库、会话存储、工具调用、Agent、检索或真实售后操作。
 
+日常开发目录固定为 `D:\Coding\MewHelp`。在 VS Code 中打开这个文件夹，后续编辑、测试和启动均在此进行；此前 C 盘 worktree 只保留为旧工作区与恢复材料。
+
 ## 本地启动（Windows PowerShell）
 
 先安装 [uv](https://docs.astral.sh/uv/getting-started/installation/)，在项目根目录执行：
 
 ```powershell
+Set-Location 'D:\Coding\MewHelp'
 uv sync --dev
 if (-not (Test-Path -LiteralPath .env)) { Copy-Item -LiteralPath .env.example -Destination .env }
 notepad .env
@@ -37,9 +40,27 @@ curl.exe --silent --show-error http://127.0.0.1:8000/health
 
 当前输入 token 估计是 **UTF-8 字节数 + 每条消息 16**，不是供应商 tokenizer 的真实计数；服务模板也计入。该策略偏保守，可能提前裁剪；不能保证覆盖任意供应商模板或隐含开销。根据所选模型的真实窗口设置预算并保留余量；受保护的系统/当前消息已超预算时返回 413，绝不静默截断当前输入。
 
-统一协议只统一应用调用形状，不承诺 GPT、Claude、DeepSeek、Ollama 的能力相同，也不支持它们的全部原生扩展。请逐一核对兼容入口、流式文本、输出上限字段及 `response_format` 支持。按 2026-11-05 直接核对的 Claude 官方兼容文档，`response_format` 仅接受 `json_schema` 且 `strict:true`；`json_object` / `text` 返回 400。因此对 Claude 应显式设置 `STRUCTURED_OUTPUT_METHOD=json_schema`，不要使用本项目默认的 `json_mode`；现有实现会为该模式发送 `strict:true`，仍须符合供应商的 JSON Schema 限制并经真实模型验收。早期 Context7 同 URL 缓存曾写成参数被忽略，已按当前官网校正，历史过程保留在 dev-notes。不能将一家的配置或测试推广为四家均通过。当前仅做过受控兼容上游验证，四家真实模型均未完成本章验收。
+统一协议只统一应用调用形状，不承诺 GPT、Claude、DeepSeek、Ollama、Qwen 的能力相同，也不支持它们的全部原生扩展。请逐一核对兼容入口、流式文本、输出上限字段及 `response_format` 支持。按 2026-11-05 直接核对的 Claude 官方兼容文档，`response_format` 仅接受 `json_schema` 且 `strict:true`；`json_object` / `text` 返回 400。因此对 Claude 应显式设置 `STRUCTURED_OUTPUT_METHOD=json_schema`，不要使用本项目默认的 `json_mode`；现有实现会为该模式发送 `strict:true`，仍须符合供应商的 JSON Schema 限制并经真实模型验收。早期 Context7 同 URL 缓存曾写成参数被忽略，已按当前官网校正，历史过程保留在 dev-notes。2026-11-06 已用用户提供的一个 Qwen 兼容服务完成真实流式、两轮上下文和 JSON 提取调用；GPT / Claude / DeepSeek / Ollama 仍未逐家实测，不能将一个部署的结果推广为所有上游均通过。
 
 官方依据：[LangChain OpenAI 集成](https://docs.langchain.com/oss/python/integrations/chat/openai)、[Claude OpenAI SDK 兼容](https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk)。配置使用当前账号实际可用模型，不在示例中固定未经验证的最新型号。
+
+### Qwen / OpenAI 兼容服务
+
+2026-11-06 验证的服务使用 `main-model:instruct` 别名，仍通过现有 `ChatOpenAI` 调用。仅在本地 `.env` 填写以下配置；地址和密钥使用实际服务提供的值：
+
+```dotenv
+OPENAI_BASE_URL=http://your-server:8020/v1
+OPENAI_MODEL=main-model:instruct
+OPENAI_API_KEY=replace-with-your-key
+OPENAI_TOKEN_LIMIT_FIELD=max_tokens
+STRUCTURED_OUTPUT_METHOD=json_mode
+CONTEXT_WINDOW_TOKENS=131072
+MAX_OUTPUT_TOKENS=512
+TOKEN_SAFETY_MARGIN=512
+HISTORY_MAX_MESSAGES=20
+```
+
+本次服务的兼容入口包含 `/v1`，模型 ID 按服务端别名原样填写；其他部署请核对各自入口和能力。131072 是用户提供的窗口上限，未做满窗口压力测试；历史仍受 20 条消息、每条 8000 字符和保守 token 预算限制。修改 `.env` 或 Prompt 后重启后端；密钥只留在 `.env`，不要写入浏览器、样例或提交记录。
 
 ## curl 首轮与第二轮
 
@@ -107,6 +128,6 @@ uv run python scripts/evaluate_prompts.py --output artifacts/ch01-eval.json
 
 2026-11-05 本地全套后端测试：115 项通过。受控真实 HTTP 链路已观察多段 SSE、用实际首轮回复构造的第二轮历史、三字段 JSON；Chrome 已观察逐字显示、追问、忙碌禁用、失败/断流提示、390px 窄屏及刷新/新对话清空。受控回复是预设合成内容，只证明协议、页面与历史传递。
 
-真实 `.env` 三项为空，真实模型两轮/流式效果、9+2 评估及人工语义 rubric **未执行**；GPT / Claude / DeepSeek / Ollama 未逐家验证。后端整体独立评审与本地整合由后续交付阶段处理，不能由本节测试结果代替。页面按用户例外免 TDD / 代码评审；自然 EOF 无终止事件和 100 条页面历史上限仅实现/自查，未逐项浏览器实测。
+2026-11-05 交付时真实模型密钥未配置，真实语义验收顺延。2026-11-06 已配置一个 Qwen 兼容服务：真实 curl 首轮收到 154 个文本增量事件，首末正文相隔约 2.93 秒；第二轮携带实际首轮回复，准确复述订单号、商品及换货诉求；售后 HTTP 接口返回三字段 JSON，Chrome 页面完成连续追问。9 个售后样例和 2 个客服样例已执行，基线、首次修正及最终报告保留在本地 `artifacts/qwen-prompt-eval-20261106*.json`。最终提取样例中订单号/类型全部匹配，期望方案精确匹配 7/9，控制器与独立代理语义核读 9/9 可接受；这是小样本单次结果，不代表一般准确率。客服 2 条中仍有 1 条漏澄清具体目标订单，未声称所有 rubric 通过。脚本仍保留 `executed_pending_semantic_review`，另存限定结论于 `artifacts/qwen-acceptance-review-20261106.json`，不把结构合法或精确匹配得分当作全部语义正确。最终提取 Prompt 的全套回归为 115 passed in 8.97s。其他上游和满上下文未实测。页面按用户例外免 TDD / 代码评审；自然 EOF 无终止事件和 100 条页面历史上限未新增专项浏览器实测。
 
 聊天历史只保存在页面内存，刷新/新对话清空；模型缺乏真实订单工具，输出不能作为真实售后办理结果。取消请求会取消上游流/等待并释放连接；浏览器只将合法 done 后的完整问答加入后续历史。页面无外部 CDN。开发过程和纠偏见 [dev-notes/ch01.md](dev-notes/ch01.md)，已批准设计见 `docs/superpowers/specs/`。
